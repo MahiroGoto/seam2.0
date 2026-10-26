@@ -70,3 +70,14 @@ def test_segments_and_joint_bands():
     assert layer_band(390.0, 0.0, 400.0, socket_depth=20.0)[0] == "socket"
     assert layer_band(200.0, 0.0, 400.0, socket_depth=20.0) == ("ring", 0.0)
     assert layer_band(381.0, 380.0, 800.0, spigot_depth=20.0)[1] == pytest.approx(3.8)
+
+
+def test_dot_bands_give_taller_layers_in_the_band():
+    res = layers_from_mesh(mesh_from_sections(cylinder_rows()), h_max=2.4, h_min=1.0,
+                           h_layer=1.8, bands=[(0.4, 0.6, 2.4)])
+    assert res["ok"]
+    zs = [np.mean([p[2] for p in L]) for L in res["layers"]]
+    gaps = np.diff([0.0] + zs)
+    mid = [g for z, g in zip(zs, gaps) if 45 < z < 58]
+    low = [g for z, g in zip(zs, gaps) if 5 < z < 35]
+    assert abs(np.mean(mid) - 2.4) < 0.15 and abs(np.mean(low) - 1.8) < 0.15

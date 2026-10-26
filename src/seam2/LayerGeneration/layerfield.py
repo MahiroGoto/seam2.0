@@ -27,7 +27,7 @@ import numpy as np
 
 from .caldistances import HeatGeodesic
 
-__all__ = ["distortion_weight", "layer_field", "layer_count", "contour_loops", "layers_from_mesh"]
+__all__ = ["distortion_weight", "layer_field", "layer_count", "layer_levels", "contour_loops", "layers_from_mesh"]
 
 
 def distortion_weight(way, frequency=0.0, ratio=1.0):
@@ -60,6 +60,29 @@ def layer_count(way_min, way_max, h_max, h_min=0.0):
     """
     n = int(math.ceil(way_max / h_max - 1e-9))
     return n, way_min / n, way_max / n, way_min / n >= h_min - 1e-6
+
+
+def layer_levels(way_ref, h_layer, bands=()):
+    """Field values u of the layers, bottom (excl. 0) to top (= 1), for a layer-height profile.
+
+    Every layer is h_layer high, except inside bands = [(u_from, u_to, h), ...] (u = 0 bottom,
+    1 top), where it is h: e.g. 2.4 mm bands that print as a dotted line. The step in u is
+    h / way_ref; all steps are then shrunk
+    a little so the last layer ends exactly on the top. way_ref = the way length the heights
+    are meant for (layers_from_mesh: the mean way). Returns (levels, target heights).
+
+    >>> lv, hs = layer_levels(100.0, 2.0, [(0.5, 0.6, 2.5)])
+    >>> len(lv), round(lv[-1], 6), max(hs)
+    (49, 1.0, 2.5)
+    """
+    u, levels, heights = 0.0, [], []
+    while u < 1.0 - 1e-9:
+        h = next((hb for a, b, hb in bands if a <= u + 1e-9 < b), h_layer)
+        u += h / way_ref
+        levels.append(u)
+        heights.append(h)
+    s = 1.0 / levels[-1]
+    return [x * s for x in levels], heights
 
 
 def contour_loops(V, F, f, level):
@@ -108,19 +131,23 @@ def contour_loops(V, F, f, level):
     return loops
 
 
-def layers_from_mesh(mesh, h_max=1.8, h_min=1.0, frequency=0.0, ratio=1.0, t_factor=100.0):
+def layers_from_mesh(mesh, h_max=1.8, h_min=1.0, frequency=0.0, ratio=1.0, t_factor=100.0,
+                     h_layer=None, bands=()):
     """Print layers of one segment.
 
     Parameters
     ----------
     mesh : dict {"V": [[x, y, z], ..], "F": [[i, j, k], ..], "bottom": [ids], "top": [ids]}
         the segment surface; bottom / top = the vertices on the two boundaries.
+    h_layer, bands : optional layer-height profile (see layer_levels): every layer h_layer
+        high, inside bands [(u_from, u_to, h)] h high. Without them all layers are h_max.
 
     Returns
     -------
     dict: "layers" (point lists, bottom to top; the last one is the top boundary itself),
-    "n", "way_min", "way_max", "h_min", "h_max", "ok", and the mean D1 on the top and D2 on
-    the bottom (a check: both ~ the segment height for a straight segment).
+    "n", "way_min", "way_max", "h_min", "h_max", "ok", "level_h" (target height per layer),
+    and the mean D1 on the top and D2 on the bottom (a check: both ~ the segment height for
+    a straight segment).
     """
     V, F = np.asarray(mesh["V"], float), np.asarray(mesh["F"], int)
     bottom, top = list(mesh["bottom"]), list(mesh["top"])
@@ -130,9 +157,19 @@ def layers_from_mesh(mesh, h_max=1.8, h_min=1.0, frequency=0.0, ratio=1.0, t_fac
     inner = np.ones(len(V), bool)
     inner[bottom + top] = False
     w_min, w_max = float(way[inner].min()), float(way[inner].max())
-    n, h_lo, h_hi, ok = layer_count(w_min, w_max, h_max, h_min)
-    layers = [contour_loops(V, F, u, k / float(n))[0] for k in range(1, n)]
+    if h_layer is None and not bands:
+        n, h_lo, h_hi, ok = layer_count(w_min, w_max, h_max, h_min)
+        levels, level_h = [k / float(n) for k in range(1, n + 1)], [h_hi] * n
+    else:
+        # heights are set on the mean way (the 2.4 mm dot effect needs ~2.4 mm on most of the wall),
+        # the longest way may get up to 3 % more
+        levels, level_h = layer_levels(float(way[inner].mean()), h_layer or h_max, bands)
+        steps = [b - a for a, b in zip([0.0] + levels[:-1], levels)]
+        n = len(levels)
+        h_lo, h_hi = w_min * min(steps), w_max * max(steps)
+        ok = h_lo >= h_min - 1e-6 and h_hi <= 1.03 * h_max + 1e-6
+    layers = [contour_loops(V, F, u, lv)[0] for lv in levels[:-1]]
     layers.append(V[top].tolist())
     return {"layers": layers, "n": n, "way_min": w_min, "way_max": w_max, "h_min": h_lo, "h_max": h_hi,
-            "ok": ok, "d1_top_mean": float(np.maximum(d1, 0)[top].mean()),
+            "ok": ok, "level_h": level_h, "d1_top_mean": float(np.maximum(d1, 0)[top].mean()),
             "d2_bottom_mean": float(np.maximum(d2, 0)[bottom].mean())}

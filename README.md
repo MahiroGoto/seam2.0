@@ -30,7 +30,8 @@ On a mesh of one segment, D1 is the distance from the bottom boundary and D2 fro
 boundary. Layer k is the contour of u = D1 / (D1 + D2) at k / n. The way length D1 + D2 (bottom
 to top through a point) sets the local layer height w / n, so n comes from the longest way and the
 largest layer height, and `layer_count` reports when the shortest way would give less than the
-smallest layer height. With the distortion weight A (`frequency`, `ratio`) the layers can be bent
+smallest layer height. `h_layer` and `bands` give a layer-height profile instead (e.g. 1.8 mm with 2.4 mm
+bands, which print as a dotted line at constant flow). With the distortion weight A (`frequency`, `ratio`) the layers can be bent
 in waves without changing the mesh (thesis, chapter *Layer Sequence Distortion*).
 
 The heat method needed two changes for long segments: t = 100 x (mean edge)^2 instead of

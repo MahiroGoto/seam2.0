@@ -1,8 +1,9 @@
 """Command line, e.g. called from Rhino:
 
-    python -m seam2.LayerGeneration mesh.json layers.json [H_MAX] [H_MIN] [FREQUENCY] [RATIO]
+    python -m seam2.LayerGeneration mesh.json layers.json [H_MAX] [H_MIN] [FREQUENCY] [RATIO] [H_LAYER] [BANDS]
 
-mesh.json = {"V", "F", "bottom", "top"}; writes the layers_from_mesh result and prints its numbers.
+mesh.json = {"V", "F", "bottom", "top"}; BANDS = JSON list [[u_from, u_to, h], ...] (layer-height
+bands, u = 0 bottom .. 1 top). Writes the layers_from_mesh result and prints its numbers.
 """
 import json
 import sys
@@ -17,9 +18,11 @@ def main(argv):
         return 1
     nums = [float(a) for a in argv[2:6]]
     h_max, h_min, freq, ratio = (nums + [1.8, 1.0, 0.0, 1.0][len(nums):])[:4]
-    res = layers_from_mesh(load_json(argv[0]), h_max, h_min, freq, ratio)
+    h_layer = float(argv[6]) if len(argv) > 6 and argv[6] not in ("", "-") else None
+    bands = [tuple(b) for b in json.loads(argv[7])] if len(argv) > 7 else ()
+    res = layers_from_mesh(load_json(argv[0]), h_max, h_min, freq, ratio, h_layer=h_layer, bands=bands)
     save_json(res, argv[1])
-    print(json.dumps({k: v for k, v in res.items() if k != "layers"}))
+    print(json.dumps({k: v for k, v in res.items() if k not in ("layers", "level_h")}))
     return 0
 
 
