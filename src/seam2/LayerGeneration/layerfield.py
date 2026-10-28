@@ -155,6 +155,9 @@ def layer_levels_gradient(V, F, u, h_layer, bands=(), h_min=1.0, h_max=2.4, marg
     blend (in u) > 0: each band fades in / out over that width OUTSIDE it (smoothstep weights, the
     step is the weighted mean of the band's and the base's steps), so the layer height ramps between
     bands instead of jumping in one layer (28 Oct, GlossColumn: sharp height edges were visible).
+    A band may set its own widths: (u_from, u_to, h, mode, blend_lo, blend_hi). A zero-width band
+    (u_from = u_to) with wide fades is a smooth swell to h and back; where two fades overlap with the
+    same width their smoothstep weights add to 1, so one height eases straight into the next.
     Returns (levels, target heights, [(h_lo, h_hi)] per layer, number of infeasible bands)."""
     g, area = face_gradient_norm(V, F, u)
     uf = np.asarray(u, float)[np.asarray(F, int)]
@@ -191,15 +194,18 @@ def layer_levels_gradient(V, F, u, h_layer, bands=(), h_min=1.0, h_max=2.4, marg
 
     def weights(u):
         """(weight, band) of every band at u; a band is full inside (u_from, u_to) and fades to 0 over
-        `blend` outside it (smoothstep), so the height ramps instead of jumping."""
+        `blend` outside it (smoothstep), so the height ramps instead of jumping. A band may carry its
+        own widths below / above it as items 5 and 6: (u_from, u_to, h, mode, blend_lo, blend_hi)."""
         out = []
         for b in bands:
+            lo = b[4] if len(b) > 4 else blend
+            hi = b[5] if len(b) > 5 else blend
             if b[0] <= u + 1e-9 < b[1]:
                 w = 1.0
-            elif blend > 0 and b[0] - blend < u < b[0]:
-                w = _smoothstep((u - (b[0] - blend)) / blend)
-            elif blend > 0 and b[1] <= u < b[1] + blend:
-                w = _smoothstep(1.0 - (u - b[1]) / blend)
+            elif lo > 0 and b[0] - lo < u < b[0]:
+                w = _smoothstep((u - (b[0] - lo)) / lo)
+            elif hi > 0 and b[1] <= u < b[1] + hi:
+                w = _smoothstep(1.0 - (u - b[1]) / hi)
             else:
                 continue
             out.append((w, b))

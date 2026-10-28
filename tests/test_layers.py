@@ -170,3 +170,15 @@ def test_blend_ramps_the_band_height():
     assert jump(sharp) > 0.9                     # 1.8 -> 2.8 in one layer without blending
     assert jump(soft) < 0.25                     # ramps over several layers with it
     assert max(soft) > 2.7 and min(soft) < 1.3   # the bands still reach their heights
+
+
+def test_zero_width_band_makes_a_smooth_swell():
+    rows = cylinder_rows(lean=0.3)
+    kw = dict(h_max=2.4, h_min=1.0, h_layer=1.8, frequency=2.0, ratio=0.75, base="bottom",
+              fade_bottom=(10.0, 40.0), fade_top=(10.0, 40.0), spacing="gradient")
+    bands = [(0.0, 0.1, 1.3, "mean", 0.0, 0.4), (0.5, 0.5, 2.8, "max", 0.4, 0.3)]
+    hs = layers_from_mesh(mesh_from_sections(rows), bands=bands, **kw)["level_h"]
+    peak = hs.index(max(hs))
+    assert max(hs) > 2.7 and min(hs[:peak]) < 1.35                       # from 1.3 up to the peak
+    assert all(b >= a - 1e-9 for a, b in zip(hs[:peak], hs[1:peak + 1]))  # rises without a shelf
+    assert max(abs(b - a) for a, b in zip(hs, hs[1:])) < 0.25            # and never jumps
