@@ -182,3 +182,63 @@ def test_zero_width_band_makes_a_smooth_swell():
     assert max(hs) > 2.7 and min(hs[:peak]) < 1.35                       # from 1.3 up to the peak
     assert all(b >= a - 1e-9 for a, b in zip(hs[:peak], hs[1:peak + 1]))  # rises without a shelf
     assert max(abs(b - a) for a, b in zip(hs, hs[1:])) < 0.25            # and never jumps
+
+
+def test_patch_is_thick_on_one_side_only():
+    rows = cylinder_rows(height=200.0)
+    axis = {"o": [0.0, 0.0, 0.0], "d": [0.0, 0.0, 1.0], "x": [1.0, 0.0, 0.0]}
+    patch = {"axis": axis, "theta": 0.0, "width": 60.0, "zone": [0.15, 0.85], "t0": 0.5, "sigma": 0.3,
+             "tilt": 0.0, "amp": 2.0}
+    res = layers_from_mesh(mesh_from_sections(rows), h_max=2.7, h_min=1.0, h_layer=1.8, spacing="gradient",
+                           patch=patch)
+
+    def gap_at(theta):                      # layer heights along the line at this angle
+        def off(p):
+            return abs((math.atan2(p[1], p[0]) - theta + math.pi) % (2 * math.pi) - math.pi)
+        z = [min(L, key=off)[2] for L in res["layers"]]
+        return [b - a for a, b in zip(z, z[1:])]
+    near, far = gap_at(0.0), gap_at(math.pi)
+    assert max(near) > 2.55 and max(near) < 2.75     # the patch peaks at about h_max
+    assert max(far) < 2.0                            # the opposite side keeps the usual height
+    assert abs(sum(near) - sum(far)) < 1.0           # both sides still run bed to top
+    z0 = [p[2] for p in res["layers"][0]]
+    assert max(z0) - min(z0) < 0.2                   # first layer (outside the zone) still flat
+
+
+def test_patch_warp_keeps_the_zone_ends():
+    from seam2.LayerGeneration import patch_warp
+    V = np.array([[math.cos(a), math.sin(a), 0.0] for a in np.linspace(0, 6, 7)] * 3)
+    u = np.repeat([0.15, 0.5, 0.85], 7)
+    patch = {"axis": {"o": [0, 0, 0], "d": [0, 0, 1], "x": [1, 0, 0]}, "theta": 0.0, "width": 90.0,
+             "zone": [0.15, 0.85], "t0": 0.4, "sigma": 0.3, "amp": 2.0}
+    w = patch_warp(V, u, patch)
+    assert np.allclose(w[:7], 0.15) and np.allclose(w[-7:], 0.85)
+    assert w[7] < 0.5                                # past a peak at t0 = 0.4: the field runs behind
+
+
+def test_patch_flat_top_holds_the_peak_longer():
+    from seam2.LayerGeneration.layerfield import patch_warp
+    V = np.array([[1.0, 0.0, 0.0]] * 201)
+    u = np.linspace(0.0, 1.0, 201)
+    base = {"axis": {"o": [0, 0, 0], "d": [0, 0, 1], "x": [1, 0, 0]}, "theta": 0.0, "width": 60.0,
+            "zone": [0.0, 1.0], "t0": 0.5, "sigma": 0.15, "amp": 2.0}
+    def thick(p):                                    # fraction of the zone with layers > 1.3 x mean
+        d = np.diff(np.interp(np.linspace(0, 1, 41), patch_warp(V, u, p), u))
+        return np.mean(d > 1.3 * d.mean())
+    assert thick(dict(base, flat=0.15)) > 1.5 * thick(base)
+    w = patch_warp(V, u, dict(base, flat=0.15, flat_deg=40.0))
+    assert abs(w[0]) < 1e-9 and abs(w[-1] - 1.0) < 1e-9
+
+
+def test_patch_narrow_peak_keeps_the_strongest_band_short():
+    from seam2.LayerGeneration.layerfield import patch_warp
+    V = np.array([[1.0, 0.0, 0.0]] * 401)
+    u = np.linspace(0.0, 1.0, 401)
+    base = {"axis": {"o": [0, 0, 0], "d": [0, 0, 1], "x": [1, 0, 0]}, "theta": 0.0, "width": 60.0,
+            "zone": [0.0, 1.0], "t0": 0.5, "sigma": 0.3, "amp": 2.0}
+    def heights(p):                                  # layer height along the zone, as a multiple of its mean
+        d = np.diff(np.interp(np.linspace(0, 1, 201), patch_warp(V, u, p), u))
+        return d / d.mean()
+    wide, peak = heights(base), heights(dict(base, peak_w=0.6, sigma_peak=0.08))
+    assert np.sum(peak > 0.9 * peak.max()) < 0.6 * np.sum(wide > 0.9 * wide.max())   # narrower top
+    assert np.sum(peak > 1.05) > 0.8 * np.sum(wide > 1.05)                           # still a wide rise
