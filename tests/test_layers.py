@@ -242,3 +242,18 @@ def test_patch_narrow_peak_keeps_the_strongest_band_short():
     wide, peak = heights(base), heights(dict(base, peak_w=0.6, sigma_peak=0.08))
     assert np.sum(peak > 0.9 * peak.max()) < 0.6 * np.sum(wide > 0.9 * wide.max())   # narrower top
     assert np.sum(peak > 1.05) > 0.8 * np.sum(wide > 1.05)                           # still a wide rise
+
+
+def test_patch_sigma_up_shortens_the_upper_fade():
+    from seam2.LayerGeneration.layerfield import patch_warp
+    V = np.array([[1.0, 0.0, 0.0]] * 401)
+    u = np.linspace(0.0, 1.0, 401)
+    base = {"axis": {"o": [0, 0, 0], "d": [0, 0, 1], "x": [1, 0, 0]}, "theta": 0.0, "width": 60.0,
+            "zone": [0.0, 1.0], "t0": 0.3, "sigma": 0.3, "amp": 2.0}
+    def heights(p):
+        d = np.diff(np.interp(np.linspace(0, 1, 201), patch_warp(V, u, p), u))
+        return d / d.mean()
+    up, sym = heights(dict(base, sigma_up=0.1)), heights(base)
+    assert abs(int(np.argmax(up)) - 60) <= 4                   # peak still at t0 = 0.3
+    assert up[20] < sym[20] - 0.1                              # thinner above the patch than the symmetric bell
+    assert abs(up[5] - up[0]) < 0.05                           # flat at the zone start: no kink

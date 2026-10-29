@@ -120,8 +120,10 @@ def patch_warp(V, u, patch, samples=400):
     Optional narrow peak: "peak_w" (0..1) of the opening goes into a second bell over "sigma_peak", the
     rest stays on the wide one over sigma: a gentle rise with a narrow strongest band (29 Oct, user: the
     dots fade in gradually, the strongest part ~30 mm tall, the patch as wide round the column).
+    Optional "sigma_up": the wide bell's half-height on the zone-start side of the centre (29 Oct, user:
+    the dots in the top quarter of each piece, next to the zone start; the gradual rise stays below).
     patch = {"axis": {...}, "theta", "width", "zone", "t0", "sigma", "tilt", "amp", "flat_deg", "flat",
-    "peak_w", "sigma_peak"}."""
+    "peak_w", "sigma_peak", "sigma_up"}."""
     u = np.asarray(u, float)
     ua, ub = patch["zone"]
     th = patch_angle(V, patch["axis"])
@@ -137,8 +139,10 @@ def patch_warp(V, u, patch, samples=400):
     s = (np.arange(samples) + 0.5) / samples                 # midpoints of the zone fraction
     ai, ci = a[inside, None], c[inside, None]
     pw, sp = patch.get("peak_w", 0.0), patch.get("sigma_peak", sig)
-    x = np.maximum(np.abs(s[None, :] - ci) - fl, 0.0)
-    b = (1.0 - pw) * _bell(x / sig) + pw * _bell(x / sp)
+    d = s[None, :] - ci
+    x = np.maximum(np.abs(d) - fl, 0.0)
+    sw = np.where(d < 0.0, patch.get("sigma_up", sig), sig)   # wide bell: own half-height above the centre
+    b = (1.0 - pw) * _bell(x / sw) + pw * _bell(x / sp)
     inv = 1.0 / (1.0 + ai * b)  # d(new t) / d(old t), before scaling
     cum = np.concatenate([np.zeros((len(ai), 1)), np.cumsum(inv, axis=1)], axis=1)
     t = (u[inside] - ua) / (ub - ua)
