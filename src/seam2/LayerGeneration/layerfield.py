@@ -39,7 +39,7 @@ import numpy as np
 
 from .caldistances import HeatGeodesic
 
-__all__ = ["distortion_weight", "fade_weight", "layer_field", "patch_angle", "patch_warp", "layer_count", "layer_levels", "face_gradient_norm",
+__all__ = ["distortion_weight", "fade_weight", "layer_field", "patch_angle", "patch_warp", "angle_wave", "layer_count", "layer_levels", "face_gradient_norm",
            "layer_levels_gradient", "contour_loops", "layers_from_mesh"]
 
 
@@ -152,6 +152,21 @@ def patch_warp(V, u, patch, samples=400):
     out = u.copy()
     out[inside] = ua + (ub - ua) * g / cum[:, -1]
     return out
+
+
+def angle_wave(V, u, way, wave):
+    """Field u with the layers waved up and down round an axis (30 Oct 2026, GlossColumn: the steep
+    waving layers seen on the bore, wanted on the outside too). Every layer is lifted by
+    dz = amp b(u) sin(n (theta - theta0)) mm, b = 1 in the middle, easing to 0 over fade[0] / fade[1]
+    (u) at the bottom / top, so the boundaries (joints) stay as they are. In the middle all layers are
+    lifted alike: the layer heights only change in the fades.
+    wave = {"axis": {...}, "n", "amp" (mm), "theta" (deg, a crest), "fade": [u_bottom, u_top]}."""
+    u = np.asarray(u, float)
+    th = patch_angle(V, wave["axis"])
+    fb, ft = wave["fade"]
+    b = _smoothstep(u / max(fb, 1e-9)) * _smoothstep((1.0 - u) / max(ft, 1e-9))
+    dz = wave["amp"] * b * np.cos(wave["n"] * (th - math.radians(wave["theta"])))
+    return u - dz / np.maximum(np.asarray(way, float), 1e-9)
 
 
 def layer_count(way_min, way_max, h_max, h_min=0.0):
@@ -378,7 +393,7 @@ def contour_loops(V, F, f, level):
 
 def layers_from_mesh(mesh, h_max=1.8, h_min=1.0, frequency=0.0, ratio=1.0, t_factor=100.0,
                      h_layer=None, bands=(), base="top", wave="cos", fade_bottom=None, fade_top=None,
-                     spacing="mean", blend=0.0, patch=None, pct=0.5, h_max_zone=None):
+                     spacing="mean", blend=0.0, patch=None, pct=0.5, h_max_zone=None, layer_wave=None):
     """Print layers of one segment.
 
     Parameters
@@ -394,6 +409,7 @@ def layers_from_mesh(mesh, h_max=1.8, h_min=1.0, frequency=0.0, ratio=1.0, t_fac
     patch : optional one-sided thick patch (see patch_warp); use spacing "gradient" with h_max = the
         patch's peak height, which then holds the patch's centre at h_max.
     h_max_zone : (u_from, u_to, h) where h_max is h instead ("gradient" spacing; a patch's range).
+    layer_wave : optional up-and-down wave of the layers round an axis (see angle_wave).
     pct : percentile of the field gradient that the h_min / h_max limits use ("gradient" spacing); 0 =
         the extreme face (a patch's narrow centre is less than the default 0.5 % of a band's faces).
 
@@ -415,6 +431,8 @@ def layers_from_mesh(mesh, h_max=1.8, h_min=1.0, frequency=0.0, ratio=1.0, t_fac
         dth = (patch_angle(V, patch["axis"]) - math.radians(patch["theta"]) + math.pi) % (2.0 * math.pi) - math.pi
         out_v = np.abs(dth) >= math.radians(patch.get("flat_deg", 0.0) + patch["width"])
         mean_mask = out_v[np.asarray(F, int)].all(axis=1)  # the mean height from outside the patch only
+    if layer_wave:
+        u = angle_wave(V, u, way, layer_wave)
     inner =np.ones(len(V), bool)
     inner[bottom + top] = False
     w_min, w_max = float(way[inner].min()), float(way[inner].max())

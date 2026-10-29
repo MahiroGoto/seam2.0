@@ -6,7 +6,8 @@ mesh.json = {"V", "F", "bottom", "top"}; BANDS = JSON list [[u_from, u_to, h], .
 bands, u = 0 bottom .. 1 top); DISTORT = JSON object with any of "base" ("top" / "bottom"), "wave"
 ("cos" / "sin"), "fade_bottom" / "fade_top" ([start, width] mm), "spacing" ("mean" / "gradient"), "blend" (u width
 over which the bands fade in / out, "gradient" spacing only), "patch" (a one-sided thick patch, see
-patch_warp), "pct" (gradient percentile for the height limits, default 0.5), "h_max_zone" ([u_from, u_to, h]: h_max there).
+patch_warp), "pct" (gradient percentile for the height limits, default 0.5), "h_max_zone" ([u_from, u_to, h]: h_max there), "angle_wave" (layers
+waved round an axis, see angle_wave).
 Writes the layers_from_mesh result and prints its numbers.
 """
 import json
@@ -30,7 +31,7 @@ def main(argv):
                            fade_bottom=dist.get("fade_bottom"), fade_top=dist.get("fade_top"),
                            spacing=dist.get("spacing", "mean"), blend=dist.get("blend", 0.0),
                            patch=dist.get("patch"), pct=dist.get("pct", 0.5),
-                           h_max_zone=dist.get("h_max_zone"))
+                           h_max_zone=dist.get("h_max_zone"), layer_wave=dist.get("angle_wave"))
     save_json(res, argv[1])
     print(json.dumps({k: v for k, v in res.items() if k not in ("layers", "level_h")}))
     return 0

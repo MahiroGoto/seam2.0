@@ -257,3 +257,21 @@ def test_patch_sigma_up_shortens_the_upper_fade():
     assert abs(int(np.argmax(up)) - 60) <= 4                   # peak still at t0 = 0.3
     assert up[20] < sym[20] - 0.1                              # thinner above the patch than the symmetric bell
     assert abs(up[5] - up[0]) < 0.05                           # flat at the zone start: no kink
+
+
+def test_angle_wave_lifts_the_middle_layers_round_the_axis():
+    rows = cylinder_rows(height=200.0)
+    wave = {"axis": {"o": [0.0, 0.0, 0.0], "d": [0.0, 0.0, 1.0], "x": [1.0, 0.0, 0.0]}, "n": 3, "amp": 5.0,
+            "theta": 0.0, "fade": [0.25, 0.25]}
+    res = layers_from_mesh(mesh_from_sections(rows), h_max=2.4, h_min=1.0, h_layer=1.8, spacing="gradient",
+                           layer_wave=wave)
+
+    def z_at(L, theta):
+        return min(L, key=lambda p: abs((math.atan2(p[1], p[0]) - theta + math.pi) % (2 * math.pi) - math.pi))[2]
+    mid = res["layers"][len(res["layers"]) // 2]
+    swing = z_at(mid, 0.0) - z_at(mid, math.pi / 3)     # crest at 0 deg, trough 60 deg away (3 lobes)
+    assert 9.0 < swing < 11.0                            # 2 x amp
+    z0 = [p[2] for p in res["layers"][0]]
+    assert max(z0) - min(z0) < 0.3                       # the first layer (at the boundary) stays flat
+    gaps = [b - a for a, b in zip([z_at(L, 0.0) for L in res["layers"]], [z_at(L, 0.0) for L in res["layers"][1:]])]
+    assert min(gaps) > 0.9 and max(gaps) < 2.5           # the fades keep the heights in range
